@@ -145,6 +145,10 @@ h2 { font-size: 21px; font-weight: 800; letter-spacing: -0.3px; margin: 0; }
   display: flex; justify-content: space-around; gap: 6px;
   background: var(--forest); border-radius: 24px;
   padding: 10px 12px; box-shadow: 0 10px 26px rgba(31,61,46,.32);
+  /* Scrolling screen content (e.g. the Fitness Race track's day markers) can
+     carry its own z-index; without an explicit one here those elements paint
+     above this "sticky" nav instead of scrolling behind it. */
+  z-index: 20;
 }
 .nav button { display: flex; flex-direction: column; align-items: center; gap: 3px; color: rgba(255,255,255,.55); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 16px; }
 .nav button.active { color: #fff; background: rgba(255,255,255,.14); }

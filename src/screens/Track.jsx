@@ -121,8 +121,12 @@ export default function Track() {
           const crowded = grp.length > 1
           const dx = crowded ? (idx - (grp.length - 1) / 2) * 6.5 : 0 // % sideways step only
           const showTag = p.isMe || !crowded || tappedId === p.id
+          // Whoever's tag is open right now needs to paint above everyone else —
+          // including "me" — or my own glow can sit on top of a neighbour's
+          // just-revealed name and hide it when they're close together.
+          const z = tappedId === p.id ? 5 : p.isMe ? 4 : 3
           return (
-            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={dx} z={p.isMe ? 4 : 3} className="pop" elRef={p.isMe ? meRef : undefined}>
+            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={dx} z={z} className="pop" elRef={p.isMe ? meRef : undefined}>
               <div
                 style={{ textAlign: 'center', cursor: crowded && !p.isMe ? 'pointer' : 'default' }}
                 onClick={() => crowded && !p.isMe && setTappedId((cur) => (cur === p.id ? null : p.id))}

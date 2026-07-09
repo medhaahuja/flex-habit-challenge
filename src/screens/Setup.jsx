@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import Flex from '../components/Flex.jsx'
 import { Pencil } from '../components/Icons.jsx'
 import { actions } from '../data/store.js'
@@ -9,7 +9,6 @@ export default function Setup({ onDone }) {
   const [name, setName] = useState('Sunny')
   const [color, setColor] = useState(COLORS[0])
   const [wakeup, setWakeup] = useState('06:30')
-  const colorInputRef = useRef(null)
   const isCustom = !COLORS.includes(color)
 
   function done() {
@@ -37,23 +36,27 @@ export default function Setup({ onDone }) {
               <button key={c} className={`swatch ${c === color ? 'sel' : ''}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={`colour ${c}`} />
             ))}
             {/* Circular trigger for a custom colour — shows a pencil by default,
-                or the chosen custom colour once picked (still tappable to change it). */}
-            <button
-              className={`swatch ${isCustom ? 'sel' : ''}`}
-              style={isCustom ? { background: color } : { background: '#fff', border: '2px dashed #cbbfa0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onClick={() => colorInputRef.current?.click()}
-              aria-label="custom colour"
-            >
-              {!isCustom && <Pencil c="#8a7658" s={16} />}
-            </button>
-            <input
-              ref={colorInputRef}
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-              tabIndex={-1}
-            />
+                or the chosen custom colour once picked (still tappable to change
+                it). The real <input type="color"> sits invisibly ON TOP of the
+                whole circle (not hidden off to the side) so a tap lands directly
+                on it — more reliable than a synthetic .click() from another
+                element, which some mobile browsers won't honour for colour
+                inputs. */}
+            <div style={{ position: 'relative', width: 40, height: 40 }}>
+              <div
+                className={`swatch ${isCustom ? 'sel' : ''}`}
+                style={isCustom ? { background: color } : { background: '#fff', border: '2px dashed #cbbfa0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {!isCustom && <Pencil c="#8a7658" s={16} />}
+              </div>
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                aria-label="custom colour"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }}
+              />
+            </div>
           </div>
         </div>
 
