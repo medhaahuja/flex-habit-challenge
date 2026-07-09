@@ -16,6 +16,13 @@ export default function Home({ onOpenTrack }) {
   const frac = batteryFraction(c)
   const charged = isFullyCharged(c)
   const st = streak()
+  const submitted = !!c.submitted
+
+  // Once today is submitted we show a read-only "logged" summary instead of the
+  // editable list — until the user taps Edit, or the day rolls over (a new
+  // date key = a fresh, unsubmitted check-in, so the list returns automatically).
+  const [editing, setEditing] = useState(false)
+  const showLogged = submitted && !editing
 
   const [celebrate, setCelebrate] = useState(false)
   const prevCharged = useRef(charged)
@@ -52,7 +59,7 @@ export default function Home({ onOpenTrack }) {
       {/* top bar */}
       <div className="row between" style={{ alignItems: 'center' }}>
         <div>
-          <h2>Hi, I'm {profile.flexName || 'Flex'}</h2>
+          <h2>Hi, {profile.flexName || 'Flex'}</h2>
           <div className="sub" style={{ margin: 0 }}>{todayLabel()}</div>
         </div>
         <div className={`streak ${st === 0 ? 'dead' : ''}`}>
@@ -60,47 +67,78 @@ export default function Home({ onOpenTrack }) {
         </div>
       </div>
 
-      {/* Flex hero — an illustrated side-scrolling race scene. Flex is fixed
-          on screen; everyone else is placed by their distance from your own
-          total, so the world slides past you as you progress. Your icon
-          only ever moves for your own progress, never for anyone else's. */}
+      {/* Flex on the race scene — advances toward the finish as habits are ticked */}
       <div className="hero mt12">
         <TrackScene profile={profile} frac={frac} mood={fs.mood} battery={fs.color} celebrate={celebrate} />
       </div>
 
-      {/* habit cards */}
-      <div className="stack gap8 mt16">
-        <HabitRow done={c.steps} accent="var(--steps)" tint="#eafaf0" Icon={Steps} title="10,000 steps" desc={c.steps ? 'Nailed it' : 'Tap when you hit 10k'} onClick={() => toggle('steps')} />
-        <HabitRow done={c.wake} accent="var(--wake)" tint="#fff2d6" Icon={Sunrise} title="Wake up early" desc={`Your goal: up by ${profile.wakeupTime || '06:30'}`} onClick={() => toggle('wake')} />
-        <HabitRow done={c.workout} accent="var(--workout)" tint="#f0e8ff" Icon={Dumbbell} title="Workout / Yoga" desc="Gym, run, badminton, yoga…" onClick={() => toggle('workout')} />
+      {showLogged ? (
+        <LoggedToday c={c} charged={charged} onEdit={() => setEditing(true)} onOpenTrack={onOpenTrack} />
+      ) : (
+        <>
+          <div className="stack gap8 mt16">
+            <HabitRow done={c.steps} accent="var(--steps)" tint="#eafaf0" Icon={Steps} title="10,000 steps" desc={c.steps ? 'Nailed it' : 'Tap when you hit 10k'} onClick={() => toggle('steps')} />
+            <HabitRow done={c.wake} accent="var(--wake)" tint="#fff2d6" Icon={Sunrise} title="Wake up early" desc={`Your goal: up by ${profile.wakeupTime || '06:30'}`} onClick={() => toggle('wake')} />
+            <HabitRow done={c.workout} accent="var(--workout)" tint="#f0e8ff" Icon={Dumbbell} title="Workout / Yoga" desc="Gym, run, badminton, yoga…" onClick={() => toggle('workout')} />
 
-        {/* water — the one place decimals are kept (litres) */}
-        <div className="habit" style={{ flexDirection: 'column', alignItems: 'stretch', '--accent': 'var(--water)', '--accent-tint': '#eef7fe', ...(( c.waterHalves || 0) >= WATER_TARGET_HALVES ? { borderColor: 'var(--water)', background: '#eef7fe' } : {}) }}>
-          <div className="row gap10" style={{ alignItems: 'center' }}>
-            <div className="ico"><Drop c="var(--water)" /></div>
-            <div className="txt">
-              <div className="title">Drink 3 bottles</div>
-              <div className="desc">Tap once for half, twice for full</div>
+            {/* water — the one place decimals are kept (litres) */}
+            <div className="habit" style={{ flexDirection: 'column', alignItems: 'stretch', '--accent': 'var(--water)', '--accent-tint': '#eef7fe' }}>
+              <div className="row gap10" style={{ alignItems: 'center' }}>
+                <div className="ico"><Drop c="var(--water)" /></div>
+                <div className="txt">
+                  <div className="title">Drink 3 bottles</div>
+                  <div className="desc">Tap once for half, twice for full</div>
+                </div>
+                <div style={{ fontWeight: 800, color: 'var(--water)', fontSize: 13 }}>{formatLiters(c.waterHalves)}/3 L</div>
+              </div>
+              <div className="bottles">
+                {[0, 1, 2].map((i) => {
+                  const level = Math.max(0, Math.min(2, (c.waterHalves || 0) - 2 * i))
+                  return <span key={i} onClick={() => tapBottle(i)}><Bottle level={level} s={30} /></span>
+                })}
+              </div>
             </div>
-            <div style={{ fontWeight: 800, color: 'var(--water)', fontSize: 13 }}>{formatLiters(c.waterHalves)}/3 L</div>
           </div>
-          <div className="bottles">
-            {[0, 1, 2].map((i) => {
-              const level = Math.max(0, Math.min(2, (c.waterHalves || 0) - 2 * i))
-              return <span key={i} onClick={() => tapBottle(i)}><Bottle level={level} s={30} /></span>
-            })}
-          </div>
-        </div>
-      </div>
 
-      <button className="btn mt16" onClick={onOpenTrack}>View my progress →</button>
+          <button className="btn green mt16" onClick={() => { actions.submitToday(); setEditing(false) }}>
+            {editing ? 'Save today' : "I'm done for today"}
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
-// Fixed-camera scene: my Flex is anchored at a constant screen position (like
-// any side-scroller), and every other racer's position is computed purely
-// from (their total − my total) on a fixed scale. That guarantees my icon
+// Read-only summary shown when today is already logged. Lets the user edit or
+// jump to their race standing — the daily task itself isn't re-shown.
+function LoggedToday({ c, charged, onEdit, onOpenTrack }) {
+  const items = [
+    { Icon: Steps, accent: 'var(--steps)', tint: '#eafaf0', title: '10,000 steps', done: c.steps },
+    { Icon: Sunrise, accent: 'var(--wake)', tint: '#fff2d6', title: 'Wake up early', done: c.wake },
+    { Icon: Dumbbell, accent: 'var(--workout)', tint: '#f0e8ff', title: 'Workout / Yoga', done: c.workout },
+    { Icon: Drop, accent: 'var(--water)', tint: '#eef7fe', title: `Water · ${formatLiters(c.waterHalves)}/3 L`, done: (c.waterHalves || 0) >= WATER_TARGET_HALVES },
+  ]
+  return (
+    <div className="mt16">
+      <div className="card">
+        <div style={{ fontSize: 16, fontWeight: 800 }}>{charged ? 'All done — fully charged today!' : "Today's logged"}</div>
+        <div className="sub" style={{ margin: '2px 0 12px' }}>Come back tomorrow to charge up again. You can still tweak today below.</div>
+        <div className="stack gap8">
+          {items.map(({ Icon, accent, tint, title, done }) => (
+            <div className="row gap10" key={title} style={{ alignItems: 'center' }}>
+              <div className="ico" style={{ width: 34, height: 34, borderRadius: 10, background: tint, display: 'grid', placeItems: 'center' }}><Icon c={accent} s={18} /></div>
+              <div className="grow" style={{ fontSize: 14, fontWeight: 700, color: done ? 'var(--ink)' : 'var(--muted-2)' }}>{title}</div>
+              <div className={`check ${done ? 'on' : ''}`}>{done && <Check />}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <button className="btn mt12" onClick={onOpenTrack}>View my progress →</button>
+      <button className="btn light mt8" onClick={onEdit}>Edit today</button>
+    </div>
+  )
+}
+
 // Just me on the track. My horizontal position is driven directly by today's
 // charge (0% = start line on the left, 100% = the finish flag on the right).
 // Because it's tied to today's battery fraction, every habit I tick only ever

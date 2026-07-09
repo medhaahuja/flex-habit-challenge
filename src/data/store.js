@@ -21,16 +21,6 @@ const DEFAULT = {
   offsetDays: 0, // dev-only: lets us simulate "tomorrow" for testing rollover
 }
 
-// ---- seeded competitors (make the race feel alive even with few real users) ----
-export const COMPETITORS = [
-  { id: 'c1', name: 'Aisha', color: '#28c76f', pace: 3.7, today: 1.0 },
-  { id: 'c2', name: 'Neha', color: '#2f8fdd', pace: 3.2, today: 1.0 },
-  { id: 'c3', name: 'Rahul', color: '#ff5a5a', pace: 2.6, today: 0.5 },
-  { id: 'c4', name: 'Sam', color: '#f0a72c', pace: 1.8, today: 0.25 },
-  { id: 'c5', name: 'Dev', color: '#8b5cf6', pace: 1.2, today: 0.0 },
-  { id: 'c6', name: 'Priya', color: '#ff8f5e', pace: 2.1, today: 0.75 },
-]
-
 let state = load()
 const listeners = new Set()
 
@@ -74,10 +64,10 @@ export function todayLabel() {
 
 // ---- row <-> local shape mapping ----
 function rowToCheckin(row) {
-  return { steps: !!row.steps, wake: !!row.wake, workout: !!row.workout, waterHalves: row.water_halves || 0 }
+  return { steps: !!row.steps, wake: !!row.wake, workout: !!row.workout, waterHalves: row.water_halves || 0, submitted: !!row.submitted }
 }
 function checkinToRow(c) {
-  return { steps: !!c.steps, wake: !!c.wake, workout: !!c.workout, water_halves: c.waterHalves || 0 }
+  return { steps: !!c.steps, wake: !!c.wake, workout: !!c.workout, water_halves: c.waterHalves || 0, submitted: !!c.submitted }
 }
 
 // ---- selectors ----
@@ -117,16 +107,8 @@ export function myTotalPoints() {
   return Number(total.toFixed(2))
 }
 
-export function competitorTotals() {
-  const dIndex = challengeDayIndex()
-  const completed = Math.max(0, dIndex - 1)
-  return COMPETITORS.map((c) => ({
-    ...c,
-    total: Number((c.pace * completed + c.today * c.pace).toFixed(2)),
-  }))
-}
-
-// Full leaderboard incl. the player and any real signed-in competitors.
+// Full leaderboard: only real people who joined this challenge (from Supabase)
+// plus me. No seeded/dummy competitors.
 export function leaderboard() {
   const me = {
     id: 'me',
@@ -136,7 +118,7 @@ export function leaderboard() {
     isMe: true,
   }
   const others = state.remoteBoard.filter((p) => p.id !== state.auth.id)
-  const all = [...competitorTotals(), ...others, me].sort((a, b) => b.total - a.total)
+  const all = [...others, me].sort((a, b) => b.total - a.total)
   all.forEach((p, i) => { p.rank = i + 1 })
   return all
 }
@@ -159,24 +141,30 @@ export function streak() {
 }
 
 // ---- Supabase sync helpers ----
+// Build the race board from everyone who JOINED this challenge (so participants
+// show even with 0 points), scored by the sum of their check-in points.
 async function refreshLeaderboard() {
   if (!supabase || !state.challengeId) return
-  const { data, error } = await supabase
+  const { data: parts } = await supabase
+    .from('participants')
+    .select('user_id')
+    .eq('challenge_id', state.challengeId)
+  const ids = [...new Set((parts || []).map((p) => p.user_id))].filter((id) => id !== state.auth.id)
+  if (!ids.length) { set({ remoteBoard: [] }); return }
+
+  const { data: rows } = await supabase
     .from('checkins')
     .select('user_id, steps, wake, workout, water_halves')
     .eq('challenge_id', state.challengeId)
-  if (error || !data) return
   const totals = new Map()
-  for (const row of data) {
+  for (const row of rows || []) {
     const pts = dayPoints(rowToCheckin(row))
     totals.set(row.user_id, (totals.get(row.user_id) || 0) + pts)
   }
-  const ids = [...totals.keys()].filter((id) => id !== state.auth.id)
-  let profilesById = {}
-  if (ids.length) {
-    const { data: profs } = await supabase.from('profiles').select('id, flex_name, flex_color').in('id', ids)
-    profilesById = Object.fromEntries((profs || []).map((p) => [p.id, p]))
-  }
+
+  const { data: profs } = await supabase.from('profiles').select('id, flex_name, flex_color').in('id', ids)
+  const profilesById = Object.fromEntries((profs || []).map((p) => [p.id, p]))
+
   const remoteBoard = ids.map((id) => ({
     id,
     name: profilesById[id]?.flex_name || 'Climber',
@@ -228,7 +216,7 @@ async function bootstrapUser(user) {
     set({ joined: true, challengeId: active.challenge_id, challengeStart: active.challenges.starts_on })
     const { data: myCheckins } = await supabase
       .from('checkins')
-      .select('date, steps, wake, workout, water_halves')
+      .select('date, steps, wake, workout, water_halves, submitted')
       .eq('user_id', userId)
       .eq('challenge_id', active.challenge_id)
     if (myCheckins) {
@@ -292,6 +280,11 @@ export const actions = {
       ).then(() => refreshLeaderboard())
     }
   },
+
+  // Lock in today's log: after this, the home screen shows the "logged" summary
+  // instead of the editable list, until the user edits or the day rolls over.
+  submitToday() { actions.updateToday({ submitted: true }) },
+  editToday() { actions.updateToday({ submitted: false }) },
 
   // dev helpers (for verification / testing)
   advanceDay() { set({ offsetDays: (state.offsetDays || 0) + 1 }) },

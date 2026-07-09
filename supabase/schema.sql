@@ -46,6 +46,7 @@ create table if not exists checkins (
   wake boolean not null default false,
   workout boolean not null default false,
   water_halves int not null default 0,
+  submitted boolean not null default false,
   created_at timestamptz not null default now(),
   unique (user_id, date)
 );
