@@ -107,18 +107,33 @@ export function myTotalPoints() {
   return Number(total.toFixed(2))
 }
 
+// How many days of the challenge I've logged (did at least one habit on).
+// This is what drives my position on the race track: 1 logged day = marker 1.
+export function myDaysLogged() {
+  if (!state.challengeStart) return 0
+  let n = 0
+  for (let i = 0; i < CHALLENGE_DAYS; i++) {
+    const d = new Date(state.challengeStart + 'T00:00:00')
+    d.setDate(d.getDate() + i)
+    const c = state.checkins[dateToKey(d)]
+    if (c && didSomething(c)) n++
+  }
+  return n
+}
+
 // Full leaderboard: only real people who joined this challenge (from Supabase)
-// plus me. No seeded/dummy competitors.
+// plus me. Ranked by days logged (track position), points as a tiebreaker.
 export function leaderboard() {
   const me = {
     id: 'me',
     name: state.profile?.flexName || 'You',
     color: state.profile?.flexColor || '#ffcf5a',
     total: myTotalPoints(),
+    daysLogged: myDaysLogged(),
     isMe: true,
   }
   const others = state.remoteBoard.filter((p) => p.id !== state.auth.id)
-  const all = [...others, me].sort((a, b) => b.total - a.total)
+  const all = [...others, me].sort((a, b) => (b.daysLogged - a.daysLogged) || (b.total - a.total))
   all.forEach((p, i) => { p.rank = i + 1 })
   return all
 }
@@ -157,9 +172,11 @@ async function refreshLeaderboard() {
     .select('user_id, steps, wake, workout, water_halves')
     .eq('challenge_id', state.challengeId)
   const totals = new Map()
+  const daysLogged = new Map() // each checkin row is one day; count days with any habit
   for (const row of rows || []) {
-    const pts = dayPoints(rowToCheckin(row))
-    totals.set(row.user_id, (totals.get(row.user_id) || 0) + pts)
+    const c = rowToCheckin(row)
+    totals.set(row.user_id, (totals.get(row.user_id) || 0) + dayPoints(c))
+    if (didSomething(c)) daysLogged.set(row.user_id, (daysLogged.get(row.user_id) || 0) + 1)
   }
 
   const { data: profs } = await supabase.from('profiles').select('id, flex_name, flex_color').in('id', ids)
@@ -170,6 +187,7 @@ async function refreshLeaderboard() {
     name: profilesById[id]?.flex_name || 'Climber',
     color: profilesById[id]?.flex_color || '#c9bda3',
     total: Number((totals.get(id) || 0).toFixed(2)),
+    daysLogged: daysLogged.get(id) || 0,
   }))
   set({ remoteBoard })
 }

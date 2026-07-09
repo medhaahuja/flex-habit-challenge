@@ -4,8 +4,14 @@ import { useStore, leaderboard, myRank, challengeDayIndex, challengeDaysLeft } f
 import { ordinal } from '../data/format.js'
 
 const CHALLENGE_DAYS = 7
-const POINTS_PER_DAY = 4
-const TARGET = CHALLENGE_DAYS * POINTS_PER_DAY // 28 = a perfect 7-day run
+
+// One normalized coordinate system (fractions 0..1 of the track area) shared by
+// the path, the day markers, and the racers — so a racer sits EXACTLY on its
+// marker no matter how the container scales. t = 0 is the start line (bottom),
+// t = 1 is the finish (top). Day marker d and "d days logged" both live at d/7.
+const fx = (t) => 0.5 + 0.38 * Math.sin(t * Math.PI * 3)
+const fy = (t) => 0.9 - t * 0.82
+const clampDays = (d) => Math.max(0, Math.min(CHALLENGE_DAYS, d || 0))
 
 export default function Track() {
   useStore()
@@ -13,27 +19,18 @@ export default function Track() {
   const rank = myRank()
   const day = challengeDayIndex()
   const left = challengeDaysLeft()
-  const n = board.length
 
-  // vertical track geometry — a gentle S-curve. frac 0 = start line (bottom,
-  // before day 1), frac 1 = finish (top, a perfect day 7).
-  const H = 150 + n * 52
-  const top = 44, bottom = H - 40
-  const trackXY = (frac) => ({
-    x: 150 + Math.sin(frac * Math.PI * 3) * 105,
-    y: bottom - frac * (bottom - top),
-  })
-  // A racer's spot is their ACTUAL progress through the 7-day challenge, not
-  // their rank: total points / 28. So finishing day 1 (=4 pts) puts you at the
-  // Day 1 marker (1/7 of the way), regardless of whether you're 1st.
-  const progressFrac = (total) => Math.max(0, Math.min(1, (total || 0) / TARGET))
-  // Day marker d sits where you'd be after fully completing d days (d/7).
-  const dayFrac = (d) => d / CHALLENGE_DAYS
+  // group racers by their day-marker so ties fan out instead of stacking
+  const groups = {}
+  board.forEach((p) => { const d = clampDays(p.daysLogged); (groups[d] ||= []).push(p.id) })
 
+  // winding path sampled across the whole track
   let pathD = ''
-  for (let i = 0; i <= 40; i++) {
-    const { x, y } = trackXY(i / 40)
-    pathD += i === 0 ? `M${x.toFixed(1)} ${y.toFixed(1)}` : ` L${x.toFixed(1)} ${y.toFixed(1)}`
+  for (let i = 0; i <= 60; i++) {
+    const t = i / 60
+    const x = (fx(t) * 100).toFixed(2)
+    const y = (fy(t) * 100).toFixed(2)
+    pathD += i === 0 ? `M${x} ${y}` : ` L${x} ${y}`
   }
 
   return (
@@ -50,44 +47,58 @@ export default function Track() {
       </div>
 
       {left === 0 && (
-        <div className="card mt12" style={{ background: '#eafaf0', borderColor: 'var(--bat-green)' }}>
+        <div className="card mt12" style={{ background: '#eafaf0' }}>
           <div style={{ fontWeight: 800 }}>Final day! You're {ordinal(rank)} of {board.length}.</div>
           <div className="sub" style={{ margin: 0 }}>Finish strong — a fresh Fitness Race opens tomorrow.</div>
         </div>
       )}
 
-      <div className="card mt12" style={{ background: 'var(--cream-2)', borderColor: 'transparent', padding: 8 }}>
-        <div style={{ position: 'relative', height: H }}>
-          <svg viewBox={`0 0 300 ${H}`} width="100%" height={H} style={{ display: 'block' }}>
-            {/* winding trail */}
-            <path d={pathD} fill="none" stroke="#ddd4c0" strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" />
-            <path d={pathD} fill="none" stroke="#fff" strokeWidth="3" strokeDasharray="2 12" strokeLinecap="round" />
-            <text x={trackXY(1).x} y={top - 22} fontSize="12" fontWeight="800" fill="#1ba85b" textAnchor="middle" fontFamily="var(--font)">FINISH</text>
+      {/* the track fills the rest of the screen */}
+      <div className="card mt12" style={{ background: 'var(--cream-2)', flex: 1, position: 'relative', padding: 12, minHeight: 380 }}>
+        {/* winding trail — non-scaling stroke keeps a constant width as it stretches */}
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" width="100%" height="100%" style={{ position: 'absolute', inset: 12, width: 'calc(100% - 24px)', height: 'calc(100% - 24px)' }}>
+          <path d={pathD} fill="none" stroke="#ddd4c0" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          <path d={pathD} fill="none" stroke="#fff" strokeWidth="3" strokeDasharray="1 13" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.8" />
+        </svg>
 
-            {/* day-by-day waypoints — Day 1 near the start, Day 7 at the finish */}
-            {Array.from({ length: CHALLENGE_DAYS }, (_, i) => {
-              const dayNum = i + 1
-              const { x, y } = trackXY(dayFrac(dayNum))
-              const status = dayNum < day ? 'done' : dayNum === day ? 'today' : 'future'
-              const fill = status === 'done' ? 'var(--bat-green)' : '#fff'
-              const stroke = status === 'future' ? '#cfc5b4' : status === 'today' ? 'var(--wake)' : 'var(--bat-green)'
-              const textFill = status === 'done' ? '#fff' : status === 'today' ? 'var(--wake)' : '#a89f90'
-              return (
-                <g key={dayNum}>
-                  <circle cx={x} cy={y} r="11" fill={fill} stroke={stroke} strokeWidth={status === 'today' ? 3 : 2} />
-                  <text x={x} y={y + 3.5} fontSize="9.5" fontWeight="800" fill={textFill} textAnchor="middle" fontFamily="var(--font)">{dayNum}</text>
-                </g>
-              )
-            })}
-          </svg>
+        {/* FINISH label above the day-7 marker */}
+        <Positioned t={1} dy={-30}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#1ba85b', letterSpacing: 0.4 }}>FINISH</div>
+        </Positioned>
 
-          {/* runners — placed by real challenge progress (points / 28) */}
-          {board.map((p, i) => {
-            const { x: px, y } = trackXY(progressFrac(p.total))
-            const x = px + (i % 2 === 0 ? -58 : 58)
-            return (
-              <div key={p.id} className="pop" style={{ position: 'absolute', left: x, top: y, transform: 'translate(-50%,-50%)', textAlign: 'center' }}>
-                <MiniFlex color={p.color} mood={p.isMe ? 'beaming' : 'content'} s={p.isMe ? 46 : 38} ring={p.isMe} />
+        {/* day markers 1..7 */}
+        {Array.from({ length: CHALLENGE_DAYS }, (_, i) => {
+          const dayNum = i + 1
+          const status = dayNum < day ? 'done' : dayNum === day ? 'today' : 'future'
+          const bg = status === 'done' ? 'var(--forest)' : '#fff'
+          const border = status === 'future' ? '#cfc5b4' : status === 'today' ? 'var(--amber)' : 'var(--forest)'
+          const fg = status === 'done' ? '#fff' : status === 'today' ? 'var(--amber)' : '#a89f90'
+          return (
+            <Positioned key={dayNum} t={dayNum / CHALLENGE_DAYS}>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%', background: bg,
+                border: `${status === 'today' ? 3 : 2}px solid ${border}`, color: fg,
+                display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800,
+              }}>{dayNum}</div>
+            </Positioned>
+          )
+        })}
+
+        {/* start line marker */}
+        <Positioned t={0}>
+          <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#fff', border: '2px solid #cfc5b4', color: '#a89f90', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 800 }}>GO</div>
+        </Positioned>
+
+        {/* racers — standing on the marker for how many days they've logged */}
+        {board.map((p) => {
+          const d = clampDays(p.daysLogged)
+          const grp = groups[d]
+          const idx = grp.indexOf(p.id)
+          const spread = grp.length > 1 ? (idx - (grp.length - 1) / 2) * 9 : 0 // % fan for ties
+          return (
+            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={spread} dy={-4} z={3} className="pop">
+              <div style={{ textAlign: 'center' }}>
+                <MiniFlex color={p.color} mood={p.isMe ? 'beaming' : 'content'} s={p.isMe ? 48 : 38} ring={p.isMe} />
                 <div style={{
                   fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap',
                   background: p.isMe ? 'var(--ink)' : '#fff', color: p.isMe ? '#fff' : 'var(--ink)',
@@ -96,9 +107,9 @@ export default function Track() {
                   {p.isMe ? 'You' : p.name} · {ordinal(p.rank)}
                 </div>
               </div>
-            )
-          })}
-        </div>
+            </Positioned>
+          )
+        })}
       </div>
 
       <ChaseLine board={board} rank={rank} />
@@ -106,18 +117,37 @@ export default function Track() {
   )
 }
 
+// Places a child at fraction t along the track, offset by dx/dy (px for dy,
+// % for dx), inside the padded track box.
+function Positioned({ t, dx = 0, dy = 0, z, className, children }) {
+  return (
+    <div
+      className={className}
+      style={{
+        position: 'absolute',
+        left: `calc(${(fx(t) * 100).toFixed(2)}% + ${dx}%)`,
+        top: `calc(${(fy(t) * 100).toFixed(2)}% + ${dy}px)`,
+        transform: 'translate(-50%,-50%)',
+        zIndex: z,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
 function ChaseLine({ board, rank }) {
   const ahead = board.find((p) => p.rank === rank - 1)
   if (!ahead) {
-    return <div className="card mt12 center" style={{ background: '#fff6df', borderColor: '#ffd98a', fontWeight: 800, fontSize: 13 }}>
-      <Bolt c="var(--bat-orange)" /> You're leading the pack — don't let up!
+    return <div className="card mt12 center" style={{ background: '#fff6df', fontWeight: 800, fontSize: 13 }}>
+      <Bolt c="var(--amber)" /> You're leading the pack — don't let up!
     </div>
   }
   const me = board.find((p) => p.rank === rank)
-  const gap = Math.max(1, Math.round(ahead.total - (me?.total ?? 0)))
+  const dayGap = Math.max(1, (ahead.daysLogged || 0) - (me?.daysLogged || 0))
   return (
-    <div className="card mt12 center" style={{ background: '#fff6df', borderColor: '#ffd98a', fontWeight: 700, fontSize: 13, color: '#8a6a2a' }}>
-      {ahead.name} is just {gap} pt{gap > 1 ? 's' : ''} ahead — charge up again tomorrow to pass them.
+    <div className="card mt12 center" style={{ background: '#fff6df', fontWeight: 700, fontSize: 13, color: '#8a6a2a' }}>
+      {ahead.name} is {dayGap} day{dayGap > 1 ? 's' : ''} ahead — log today to catch up.
     </div>
   )
 }
