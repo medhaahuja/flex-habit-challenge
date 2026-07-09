@@ -1,0 +1,12 @@
+{
+  "name": "Flex — charge up every day",
+  "short_name": "Flex",
+  "description": "Do your daily habits, keep your energy twin charged, race everyone else.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf7ee",
+  "theme_color": "#fbf7ee",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
