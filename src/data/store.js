@@ -221,6 +221,10 @@ async function findOrCreateActiveChallenge() {
   return created
 }
 
+// Always RESET local fields to match remote truth (not just patch when found) —
+// otherwise a local browser cache can keep showing stale profile/checkins
+// after data was cleared server-side (e.g. a DB reset), producing a "ghost"
+// UI that doesn't correspond to anything in the database.
 async function bootstrapUser(user) {
   if (!supabase) return
   const userId = user.id
@@ -229,9 +233,11 @@ async function bootstrapUser(user) {
   })
 
   const { data: profileRow } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-  if (profileRow) {
-    set({ profile: { flexName: profileRow.flex_name, flexColor: profileRow.flex_color, wakeupTime: profileRow.wakeup_time } })
-  }
+  set({
+    profile: profileRow
+      ? { flexName: profileRow.flex_name, flexColor: profileRow.flex_color, wakeupTime: profileRow.wakeup_time }
+      : null,
+  })
 
   const { data: participantRows } = await supabase
     .from('participants')
@@ -245,12 +251,12 @@ async function bootstrapUser(user) {
       .select('date, steps, wake, workout, water_halves, submitted')
       .eq('user_id', userId)
       .eq('challenge_id', active.challenge_id)
-    if (myCheckins) {
-      const checkins = { ...state.checkins }
-      myCheckins.forEach((row) => { checkins[row.date] = rowToCheckin(row) })
-      set({ checkins })
-    }
+    const checkins = {}
+    ;(myCheckins || []).forEach((row) => { checkins[row.date] = rowToCheckin(row) })
+    set({ checkins })
     refreshLeaderboard()
+  } else {
+    set({ joined: false, challengeId: null, challengeStart: null, checkins: {}, remoteBoard: [] })
   }
 }
 
@@ -337,8 +343,11 @@ export const actions = {
 
 // ---- bootstrap auth on load ----
 if (supabase) {
-  supabase.auth.getSession().then(({ data }) => {
-    if (data.session?.user) bootstrapUser(data.session.user)
+  supabase.auth.getSession().then(async ({ data }) => {
+    if (data.session?.user) await bootstrapUser(data.session.user)
+    // No valid session — don't leave a stale cached profile/checkins from a
+    // previous login showing as a "ghost" logged-in state.
+    else set({ ...DEFAULT })
     set({ authChecked: true })
   })
   supabase.auth.onAuthStateChange((event, session) => {
