@@ -58,8 +58,11 @@ input { font-family: inherit; }
 .app {
   width: 100%;
   max-width: 440px;
-  min-height: 100vh;
-  min-height: 100dvh;
+  /* a hard height (not min-height) so it never grows past the viewport —
+     any screen whose content is taller scrolls internally (see .screen)
+     instead of stretching the whole page and dragging the fixed nav with it */
+  height: 100vh;
+  height: 100dvh;
   background: linear-gradient(160deg, var(--sand-1) 0%, var(--sand-2) 100%);
   background-attachment: local;
   position: relative;
@@ -70,6 +73,7 @@ input { font-family: inherit; }
 }
 .screen {
   flex: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   padding: 20px 18px calc(20px + env(safe-area-inset-bottom));

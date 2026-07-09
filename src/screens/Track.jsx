@@ -1,16 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MiniFlex from '../components/MiniFlex.jsx'
 import { Bolt } from '../components/Icons.jsx'
 import { useStore, leaderboard, myRank, challengeDayIndex, challengeDaysLeft } from '../data/store.js'
 import { ordinal } from '../data/format.js'
 
-const CHALLENGE_DAYS = 7
+const CHALLENGE_DAYS = 21
+// Keep the same "bendiness" the 7-day track had (~2.33 days per bend in the
+// S-curve) by scaling the wave count with the challenge length.
+const WAVE_COUNT = (3 * CHALLENGE_DAYS) / 7
+// More days need more room per marker or they'd overlap; below this the
+// track is just as tall as before. The screen itself scrolls to fit it
+// (see .screen / .app in index.css) — this component doesn't manage scroll.
+const TRACK_HEIGHT = Math.max(380, CHALLENGE_DAYS * 56)
 
 // One normalized coordinate system (fractions 0..1 of the track area) shared by
 // the path, the day markers, and the racers — so a racer sits EXACTLY on its
 // marker no matter how the container scales. t = 0 is the start line (bottom),
-// t = 1 is the finish (top). Day marker d and "d days logged" both live at d/7.
-const fx = (t) => 0.5 + 0.38 * Math.sin(t * Math.PI * 3)
+// t = 1 is the finish (top). Day marker d and "d days logged" both live at d/N.
+const fx = (t) => 0.5 + 0.38 * Math.sin(t * Math.PI * WAVE_COUNT)
 const fy = (t) => 0.9 - t * 0.82
 const clampDays = (d) => Math.max(0, Math.min(CHALLENGE_DAYS, d || 0))
 
@@ -21,16 +28,23 @@ export default function Track() {
   const day = challengeDayIndex()
   const left = challengeDaysLeft()
   const [tappedId, setTappedId] = useState(null)
+  const meRef = useRef(null)
 
   // group racers by their day-marker — everyone in a group is tied, so they
   // must render at the exact same spot, not spread across different progress
   const groups = {}
   board.forEach((p) => { const d = clampDays(p.daysLogged); (groups[d] ||= []).push(p.id) })
 
+  // The track is tall (21 markers need room), so land the user on their own
+  // spot instead of making them scroll to find it.
+  useEffect(() => {
+    meRef.current?.scrollIntoView({ block: 'center' })
+  }, [])
+
   // winding path sampled across the whole track
   let pathD = ''
-  for (let i = 0; i <= 60; i++) {
-    const t = i / 60
+  for (let i = 0; i <= CHALLENGE_DAYS * 6; i++) {
+    const t = i / (CHALLENGE_DAYS * 6)
     const x = (fx(t) * 100).toFixed(2)
     const y = (fy(t) * 100).toFixed(2)
     pathD += i === 0 ? `M${x} ${y}` : ` L${x} ${y}`
@@ -56,20 +70,22 @@ export default function Track() {
         </div>
       )}
 
-      {/* the track fills the rest of the screen */}
-      <div className="card mt12" style={{ background: 'var(--cream-2)', flex: 1, position: 'relative', padding: 12, minHeight: 380 }}>
+      {/* 21 markers need more room than one screen can show — the surrounding
+          .screen scrolls (see index.css), this card just sits at its full
+          natural height in the normal flow. */}
+      <div className="card mt12" style={{ background: 'var(--cream-2)', position: 'relative', height: TRACK_HEIGHT, padding: 12, flexShrink: 0 }}>
         {/* winding trail — non-scaling stroke keeps a constant width as it stretches */}
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" width="100%" height="100%" style={{ position: 'absolute', inset: 12, width: 'calc(100% - 24px)', height: 'calc(100% - 24px)' }}>
           <path d={pathD} fill="none" stroke="#ddd4c0" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           <path d={pathD} fill="none" stroke="#fff" strokeWidth="3" strokeDasharray="1 13" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.8" />
         </svg>
 
-        {/* FINISH label above the day-7 marker */}
+        {/* FINISH label above the last day's marker */}
         <Positioned t={1} dy={-30}>
           <div style={{ fontSize: 12, fontWeight: 800, color: '#1ba85b', letterSpacing: 0.4 }}>FINISH</div>
         </Positioned>
 
-        {/* day markers 1..7 */}
+        {/* day markers 1..N */}
         {Array.from({ length: CHALLENGE_DAYS }, (_, i) => {
           const dayNum = i + 1
           const status = dayNum < day ? 'done' : dayNum === day ? 'today' : 'future'
@@ -106,7 +122,7 @@ export default function Track() {
           const dx = crowded ? (idx - (grp.length - 1) / 2) * 6.5 : 0 // % sideways step only
           const showTag = p.isMe || !crowded || tappedId === p.id
           return (
-            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={dx} z={p.isMe ? 4 : 3} className="pop">
+            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={dx} z={p.isMe ? 4 : 3} className="pop" elRef={p.isMe ? meRef : undefined}>
               <div
                 style={{ textAlign: 'center', cursor: crowded && !p.isMe ? 'pointer' : 'default' }}
                 onClick={() => crowded && !p.isMe && setTappedId((cur) => (cur === p.id ? null : p.id))}
@@ -133,10 +149,13 @@ export default function Track() {
 }
 
 // Places a child at fraction t along the track, offset by dx/dy (px for dy,
-// % for dx), inside the padded track box.
-function Positioned({ t, dx = 0, dy = 0, z, className, children }) {
+// % for dx), inside the (fixed-height) track box. elRef, if given, is
+// forwarded to the root node so a specific racer (e.g. "me") can be scrolled
+// into view via scrollIntoView.
+function Positioned({ t, dx = 0, dy = 0, z, className, elRef, children }) {
   return (
     <div
+      ref={elRef}
       className={className}
       style={{
         position: 'absolute',

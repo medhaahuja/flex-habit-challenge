@@ -7,7 +7,7 @@ import { emptyCheckin, dayPoints, didSomething } from './habits.js'
 import { supabase } from './supabaseClient.js'
 
 const KEY = 'flex.v1'
-const CHALLENGE_DAYS = 7
+const CHALLENGE_DAYS = 21
 
 const DEFAULT = {
   authChecked: false,
@@ -77,7 +77,7 @@ export function getCheckin(dateKey = todayKey()) {
   return state.checkins[dateKey] || emptyCheckin()
 }
 
-// Current day within the 7-day sprint (1..7).
+// Current day within the 21-day sprint (1..21).
 export function challengeDayIndex() {
   if (!state.challengeStart) return 1
   const diff = daysBetween(state.challengeStart, todayKey())

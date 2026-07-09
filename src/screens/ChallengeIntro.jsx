@@ -37,9 +37,9 @@ export default function ChallengeIntro({ onJoin }) {
           <div className="row gap8" style={{ alignItems: 'flex-start' }}>
             <div style={{ flexShrink: 0, marginTop: 1 }}><Flag /></div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>It's a 7-day race that repeats</div>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>It's a 21-day race that repeats</div>
               <div className="sub" style={{ margin: 0, fontSize: 12.5 }}>
-                Every completed habit moves your Flex forward on a shared track. After 7 days we crown the winners — then a fresh challenge begins.
+                Every completed habit moves your Flex forward on a shared track. After 21 days we crown the winners — then a fresh challenge begins.
               </div>
             </div>
           </div>

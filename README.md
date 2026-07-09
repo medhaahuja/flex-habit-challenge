@@ -1,6 +1,6 @@
 # Flex — a gamified daily habit tracker
 
-Do four daily habits, keep your energy twin **Flex** charged, and race everyone else on a recurring 7-day track. Built to be *fun to come back to*, not a chore.
+Do four daily habits, keep your energy twin **Flex** charged, and race everyone else on a recurring 21-day track. Built to be *fun to come back to*, not a chore.
 
 ## The four habits
 - **10,000 steps** — tap when you hit it
