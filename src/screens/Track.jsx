@@ -89,23 +89,32 @@ export default function Track() {
           <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#fff', border: '2px solid #cfc5b4', color: '#a89f90', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 800 }}>GO</div>
         </Positioned>
 
-        {/* racers — standing on the marker for how many days they've logged */}
+        {/* racers — standing on the marker for how many days they've logged.
+            A lone racer gets a full name tag. When several tie on the same
+            marker, they cluster in a tight zigzag (so circles don't need to
+            fight for horizontal room) and only "You" keeps a name tag — the
+            crowd is identified by colour, and the rank badge/chase line above
+            already say where you stand among them. */}
         {board.map((p) => {
           const d = clampDays(p.daysLogged)
           const grp = groups[d]
           const idx = grp.indexOf(p.id)
-          const spread = grp.length > 1 ? (idx - (grp.length - 1) / 2) * 9 : 0 // % fan for ties
+          const crowded = grp.length > 1
+          const dx = crowded ? (idx - (grp.length - 1) / 2) * 7 : 0 // % horizontal step
+          const dy = (crowded ? (idx % 2 === 0 ? -9 : 9) : 0) - 4 // px zigzag + lift off the path
           return (
-            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={spread} dy={-4} z={3} className="pop">
+            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={dx} dy={dy} z={p.isMe ? 4 : 3} className="pop">
               <div style={{ textAlign: 'center' }}>
-                <MiniFlex color={p.color} mood={p.isMe ? 'beaming' : 'content'} s={p.isMe ? 48 : 38} ring={p.isMe} />
-                <div style={{
-                  fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap',
-                  background: p.isMe ? 'var(--ink)' : '#fff', color: p.isMe ? '#fff' : 'var(--ink)',
-                  border: p.isMe ? 'none' : '1px solid var(--line)', borderRadius: 8, padding: '2px 7px', marginTop: 2,
-                }}>
-                  {p.isMe ? 'You' : p.name} · {ordinal(p.rank)}
-                </div>
+                <MiniFlex color={p.color} mood={p.isMe ? 'beaming' : 'content'} s={p.isMe ? 46 : crowded ? 28 : 38} ring={p.isMe} />
+                {(!crowded || p.isMe) && (
+                  <div style={{
+                    fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap',
+                    background: p.isMe ? 'var(--ink)' : '#fff', color: p.isMe ? '#fff' : 'var(--ink)',
+                    border: p.isMe ? 'none' : '1px solid var(--line)', borderRadius: 8, padding: '2px 7px', marginTop: 2,
+                  }}>
+                    {p.isMe ? 'You' : p.name} · {ordinal(p.rank)}
+                  </div>
+                )}
               </div>
             </Positioned>
           )
