@@ -42,9 +42,15 @@ body {
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
 input { font-family: inherit; }
 
-/* phone shell — centers the app and caps width like a mobile device */
+/* phone shell — centers the app and caps width like a mobile device.
+   100vh on mobile Safari/Chrome is the LARGEST possible viewport (toolbars
+   collapsed), so on first load — toolbars still expanded — content sized to
+   100vh renders taller than what's actually visible, pushing bottom buttons
+   below the fold until the user scrolls. 100dvh tracks the real visible
+   viewport as it is right now; vh stays as a fallback for older browsers. */
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: stretch;
@@ -53,6 +59,7 @@ input { font-family: inherit; }
   width: 100%;
   max-width: 440px;
   min-height: 100vh;
+  min-height: 100dvh;
   background: linear-gradient(160deg, var(--sand-1) 0%, var(--sand-2) 100%);
   background-attachment: local;
   position: relative;
