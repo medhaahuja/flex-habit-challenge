@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import MiniFlex from '../components/MiniFlex.jsx'
 import { Bolt } from '../components/Icons.jsx'
 import { useStore, leaderboard, myRank, challengeDayIndex, challengeDaysLeft } from '../data/store.js'
@@ -19,8 +20,10 @@ export default function Track() {
   const rank = myRank()
   const day = challengeDayIndex()
   const left = challengeDaysLeft()
+  const [tappedId, setTappedId] = useState(null)
 
-  // group racers by their day-marker so ties fan out instead of stacking
+  // group racers by their day-marker — everyone in a group is tied, so they
+  // must render at the exact same spot, not spread across different progress
   const groups = {}
   board.forEach((p) => { const d = clampDays(p.daysLogged); (groups[d] ||= []).push(p.id) })
 
@@ -74,7 +77,7 @@ export default function Track() {
           const border = status === 'future' ? '#cfc5b4' : status === 'today' ? 'var(--amber)' : 'var(--forest)'
           const fg = status === 'done' ? '#fff' : status === 'today' ? 'var(--amber)' : '#a89f90'
           return (
-            <Positioned key={dayNum} t={dayNum / CHALLENGE_DAYS}>
+            <Positioned key={dayNum} t={dayNum / CHALLENGE_DAYS} z={1}>
               <div style={{
                 width: 30, height: 30, borderRadius: '50%', background: bg,
                 border: `${status === 'today' ? 3 : 2}px solid ${border}`, color: fg,
@@ -85,28 +88,31 @@ export default function Track() {
         })}
 
         {/* start line marker */}
-        <Positioned t={0}>
+        <Positioned t={0} z={1}>
           <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#fff', border: '2px solid #cfc5b4', color: '#a89f90', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 800 }}>GO</div>
         </Positioned>
 
-        {/* racers — standing on the marker for how many days they've logged.
-            A lone racer gets a full name tag. When several tie on the same
-            marker, they cluster in a tight zigzag (so circles don't need to
-            fight for horizontal room) and only "You" keeps a name tag — the
-            crowd is identified by colour, and the rank badge/chase line above
-            already say where you stand among them. */}
+        {/* Racers stand exactly ON the marker for how many days they've logged —
+            same day = same spot, same height, never shifted ahead/behind. Tied
+            racers spread ONLY sideways (never up/down, which would misread as
+            more/less progress) in a tight huddle right on top of the marker.
+            Only "You" keeps a name tag by default; tap anyone else to reveal
+            theirs — avoids a wall of overlapping labels when several tie. */}
         {board.map((p) => {
           const d = clampDays(p.daysLogged)
           const grp = groups[d]
           const idx = grp.indexOf(p.id)
           const crowded = grp.length > 1
-          const dx = crowded ? (idx - (grp.length - 1) / 2) * 7 : 0 // % horizontal step
-          const dy = (crowded ? (idx % 2 === 0 ? -9 : 9) : 0) - 4 // px zigzag + lift off the path
+          const dx = crowded ? (idx - (grp.length - 1) / 2) * 6.5 : 0 // % sideways step only
+          const showTag = p.isMe || !crowded || tappedId === p.id
           return (
-            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={dx} dy={dy} z={p.isMe ? 4 : 3} className="pop">
-              <div style={{ textAlign: 'center' }}>
-                <MiniFlex color={p.color} mood={p.isMe ? 'beaming' : 'content'} s={p.isMe ? 46 : crowded ? 28 : 38} ring={p.isMe} />
-                {(!crowded || p.isMe) && (
+            <Positioned key={p.id} t={d / CHALLENGE_DAYS} dx={dx} z={p.isMe ? 4 : 3} className="pop">
+              <div
+                style={{ textAlign: 'center', cursor: crowded && !p.isMe ? 'pointer' : 'default' }}
+                onClick={() => crowded && !p.isMe && setTappedId((cur) => (cur === p.id ? null : p.id))}
+              >
+                <MiniFlex color={p.color} mood={p.isMe ? 'beaming' : 'content'} s={p.isMe ? 44 : crowded ? 30 : 38} ring={p.isMe} />
+                {showTag && (
                   <div style={{
                     fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap',
                     background: p.isMe ? 'var(--ink)' : '#fff', color: p.isMe ? '#fff' : 'var(--ink)',

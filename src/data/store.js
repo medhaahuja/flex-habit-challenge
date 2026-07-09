@@ -133,8 +133,16 @@ export function leaderboard() {
     isMe: true,
   }
   const others = state.remoteBoard.filter((p) => p.id !== state.auth.id)
+  // Sort by days logged (ties broken by points only for stable ordering within
+  // a tied cluster — it does NOT create a different rank number for them).
   const all = [...others, me].sort((a, b) => (b.daysLogged - a.daysLogged) || (b.total - a.total))
-  all.forEach((p, i) => { p.rank = i + 1 })
+  // Dense rank: everyone standing on the same day marker shares one rank.
+  // 4 people on day 2 are all "1st"; the next distinct (lower) day is "2nd".
+  let rank = 0, lastDays = null
+  all.forEach((p) => {
+    if (p.daysLogged !== lastDays) { rank += 1; lastDays = p.daysLogged }
+    p.rank = rank
+  })
   return all
 }
 
