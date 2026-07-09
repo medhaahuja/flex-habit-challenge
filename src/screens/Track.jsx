@@ -4,6 +4,8 @@ import { useStore, leaderboard, myRank, challengeDayIndex, challengeDaysLeft } f
 import { ordinal } from '../data/format.js'
 
 const CHALLENGE_DAYS = 7
+const POINTS_PER_DAY = 4
+const TARGET = CHALLENGE_DAYS * POINTS_PER_DAY // 28 = a perfect 7-day run
 
 export default function Track() {
   useStore()
@@ -13,16 +15,20 @@ export default function Track() {
   const left = challengeDaysLeft()
   const n = board.length
 
-  // vertical track geometry — a gentle S-curve computed from a single frac
-  // (0 = start/day 1, 1 = finish/day 7) so racer dots and day waypoints
-  // share the exact same path.
+  // vertical track geometry — a gentle S-curve. frac 0 = start line (bottom,
+  // before day 1), frac 1 = finish (top, a perfect day 7).
   const H = 150 + n * 52
   const top = 44, bottom = H - 40
   const trackXY = (frac) => ({
     x: 150 + Math.sin(frac * Math.PI * 3) * 105,
     y: bottom - frac * (bottom - top),
   })
-  const rankFrac = (r) => (n <= 1 ? 1 : 1 - (r - 1) / (n - 1))
+  // A racer's spot is their ACTUAL progress through the 7-day challenge, not
+  // their rank: total points / 28. So finishing day 1 (=4 pts) puts you at the
+  // Day 1 marker (1/7 of the way), regardless of whether you're 1st.
+  const progressFrac = (total) => Math.max(0, Math.min(1, (total || 0) / TARGET))
+  // Day marker d sits where you'd be after fully completing d days (d/7).
+  const dayFrac = (d) => d / CHALLENGE_DAYS
 
   let pathD = ''
   for (let i = 0; i <= 40; i++) {
@@ -58,10 +64,10 @@ export default function Track() {
             <path d={pathD} fill="none" stroke="#fff" strokeWidth="3" strokeDasharray="2 12" strokeLinecap="round" />
             <text x={trackXY(1).x} y={top - 22} fontSize="12" fontWeight="800" fill="#1ba85b" textAnchor="middle" fontFamily="var(--font)">FINISH</text>
 
-            {/* day-by-day waypoints, Day 1 (start) -> Day 7 (finish) */}
+            {/* day-by-day waypoints — Day 1 near the start, Day 7 at the finish */}
             {Array.from({ length: CHALLENGE_DAYS }, (_, i) => {
               const dayNum = i + 1
-              const { x, y } = trackXY(i / (CHALLENGE_DAYS - 1))
+              const { x, y } = trackXY(dayFrac(dayNum))
               const status = dayNum < day ? 'done' : dayNum === day ? 'today' : 'future'
               const fill = status === 'done' ? 'var(--bat-green)' : '#fff'
               const stroke = status === 'future' ? '#cfc5b4' : status === 'today' ? 'var(--wake)' : 'var(--bat-green)'
@@ -75,9 +81,9 @@ export default function Track() {
             })}
           </svg>
 
-          {/* runners */}
+          {/* runners — placed by real challenge progress (points / 28) */}
           {board.map((p, i) => {
-            const { x: px, y } = trackXY(rankFrac(p.rank))
+            const { x: px, y } = trackXY(progressFrac(p.total))
             const x = px + (i % 2 === 0 ? -58 : 58)
             return (
               <div key={p.id} className="pop" style={{ position: 'absolute', left: x, top: y, transform: 'translate(-50%,-50%)', textAlign: 'center' }}>
