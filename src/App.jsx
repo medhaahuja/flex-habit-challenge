@@ -14,7 +14,9 @@ export default function App() {
   return (
     <div className="app">
       {!state.authChecked ? <Loading /> : onboarded ? <Main /> : <Onboarding />}
-      {new URLSearchParams(location.search).has('dev') && <DevBar />}
+      {/* dev-only: the +1-day / reset toolbar must never reach the live build,
+          or anyone can add ?dev to the URL and advance days to cheat the race */}
+      {import.meta.env.DEV && new URLSearchParams(location.search).has('dev') && <DevBar />}
     </div>
   )
 }

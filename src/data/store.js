@@ -49,7 +49,10 @@ function dateToKey(d) {
 }
 export function todayKey() {
   const d = new Date()
-  d.setDate(d.getDate() + (state.offsetDays || 0))
+  // offsetDays is a DEV-only time-travel aid; never let it shift real dates in
+  // production (a persisted offset from the ?dev bar must not leak into a live
+  // build and let someone log future days).
+  if (import.meta.env.DEV) d.setDate(d.getDate() + (state.offsetDays || 0))
   return dateToKey(d)
 }
 function daysBetween(aKey, bKey) {
@@ -109,13 +112,18 @@ export function myTotalPoints() {
 
 // How many days of the challenge I've logged (did at least one habit on).
 // This is what drives my position on the race track: 1 logged day = marker 1.
+// Only counts days from the start up to TODAY (never future days) and within
+// the challenge window, so it can never exceed the real elapsed day count.
 export function myDaysLogged() {
   if (!state.challengeStart) return 0
+  const today = todayKey()
   let n = 0
   for (let i = 0; i < CHALLENGE_DAYS; i++) {
     const d = new Date(state.challengeStart + 'T00:00:00')
     d.setDate(d.getDate() + i)
-    const c = state.checkins[dateToKey(d)]
+    const key = dateToKey(d)
+    if (key > today) break // don't count days that haven't happened yet
+    const c = state.checkins[key]
     if (c && didSomething(c)) n++
   }
   return n
@@ -177,11 +185,20 @@ async function refreshLeaderboard() {
 
   const { data: rows } = await supabase
     .from('checkins')
-    .select('user_id, steps, wake, workout, water_halves')
+    .select('user_id, date, steps, wake, workout, water_halves')
     .eq('challenge_id', state.challengeId)
+  // Only count check-ins that fall inside the challenge window AND aren't in the
+  // future — so stray/dev-tool rows dated before the start or after today can't
+  // inflate anyone's position past the real elapsed day count.
+  const start = state.challengeStart
+  const end = challengeEndKey()
+  const today = todayKey()
+  const windowEnd = today < end ? today : end
+  const inWindow = (dateStr) => dateStr >= start && dateStr <= windowEnd
   const totals = new Map()
-  const daysLogged = new Map() // each checkin row is one day; count days with any habit
+  const daysLogged = new Map() // each in-window checkin row is one day
   for (const row of rows || []) {
+    if (!inWindow(row.date)) continue
     const c = rowToCheckin(row)
     totals.set(row.user_id, (totals.get(row.user_id) || 0) + dayPoints(c))
     if (didSomething(c)) daysLogged.set(row.user_id, (daysLogged.get(row.user_id) || 0) + 1)
